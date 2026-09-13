@@ -1,0 +1,80 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "arc-llama-audio"
+version = "0.1.0"
+description = "Speech-to-text and text-to-speech plugin for arc-llama"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "arc-llama>=0.8.0",
+]
+
+[project.optional-dependencies]
+# Only the TTS side needs a torch stack. Transcription runs on the
+# llama-server the core already manages, so an ASR-only install stays as
+# light as arc-llama itself.
+tts = [
+    "omnivoice>=0.2.1",
+    "torch>=2.10,<2.12",
+    "torchaudio>=2.10,<2.12",
+    "torchao>=0.7",
+    "triton-xpu",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+arc-llama-audio = "arc_llama_audio.cli:main"
+
+# Two plugins, one package. A missing torch then takes out speech synthesis
+# and leaves transcription serving, instead of failing both.
+[project.entry-points."arc_llama.plugins"]
+audio-asr = "arc_llama_audio.asr:AsrPlugin"
+audio-tts = "arc_llama_audio.tts_plugin:TtsPlugin"
+
+[tool.uv]
+environments = ["python_full_version < '3.15'"]
+
+[[tool.uv.index]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true
+
+# PyTorch publishes one wheel per accelerator under a single name, and the
+# PyPI one is the CUDA build. torchaudio is the one that actually breaks
+# rather than merely wasting disk: its extension links libcudart, which an
+# XPU torch never installs.
+[tool.uv.sources]
+torch = [{ index = "pytorch-xpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+torchao = [{ index = "pytorch-xpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+torchaudio = [{ index = "pytorch-xpu", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+triton-xpu = [{ index = "pytorch-xpu" }]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/arc_llama_audio"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N"]
+ignore = ["E501"]
+
+[tool.mypy]
+[[tool.mypy.overrides]]
+module = ["torch.*", "torchao.*", "omnivoice.*", "soundfile", "arc_llama.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
